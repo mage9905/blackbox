@@ -17,6 +17,7 @@
     <form id="form">
         <label>主队</label><input id="home" required>
         <label>客队</label><input id="away" required>
+        <label>伤停（可选）</label><input id="injuries">
         <button type="submit">🔮 预测</button>
     </form>
     <div id="result" class="result">等待输入...</div>
@@ -27,6 +28,7 @@
         const data = {
             home: document.getElementById('home').value,
             away: document.getElementById('away').value,
+            injuries: document.getElementById('injuries').value
         };
         const res = await fetch('/predict', {
             method: 'POST',
