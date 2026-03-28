@@ -5,39 +5,109 @@
     <title>黑箱神器</title>
     <style>
         body { background: #0b0e17; color: #e0e5f0; font-family: monospace; padding: 2rem; }
-        .container { max-width: 600px; margin: auto; background: #1a1b26; padding: 2rem; border-radius: 16px; }
-        input, button { width: 100%; margin: 0.5rem 0; padding: 0.5rem; background: #2a2c3a; border: 1px solid #2a7faa; color: white; }
-        button { background: #2a7faa; cursor: pointer; }
-        .result { white-space: pre-wrap; background: #0f0f1a; padding: 1rem; margin-top: 1rem; }
+        .container { max-width: 800px; margin: auto; }
+        .panel { background: #1a1b26; padding: 1.5rem; border-radius: 16px; margin-bottom: 2rem; border: 1px solid #2a7faa; }
+        h2 { margin-top: 0; color: #2a7faa; }
+        input, button { width: 100%; padding: 0.5rem; margin: 0.5rem 0; background: #2a2c3a; border: 1px solid #2a7faa; color: white; border-radius: 8px; }
+        button { background: #2a7faa; cursor: pointer; font-weight: bold; }
+        button:disabled { background: #4a5a66; cursor: not-allowed; }
+        .result { background: #0f0f1a; padding: 1rem; border-left: 3px solid #2a7faa; white-space: pre-wrap; margin-top: 1rem; }
+        .progress-bar { width: 100%; background: #2a2c3a; border-radius: 10px; overflow: hidden; margin: 0.5rem 0; }
+        .progress-fill { width: 0%; background: #2a7faa; height: 20px; transition: width 0.3s; }
+        .status { font-size: 0.9rem; margin-top: 0.5rem; }
+        .status-idle { color: #888; }
+        .status-running { color: #ffaa44; }
+        .status-success { color: #44ff44; }
+        .status-failed { color: #ff4444; }
     </style>
 </head>
 <body>
 <div class="container">
     <h1>⚫ 黑箱神器</h1>
-    <form id="form">
-        <label>主队</label><input id="home" required>
-        <label>客队</label><input id="away" required>
-        <label>伤停（可选）</label><input id="injuries">
-        <button type="submit">🔮 预测</button>
-    </form>
-    <div id="result" class="result">等待输入...</div>
+    
+    <!-- 训练面板 -->
+    <div class="panel">
+        <h2>📥 训练模型</h2>
+        <p>从 football.json 拉取历史数据，训练球队攻防参数（不调用 API）</p>
+        <button id="trainBtn" onclick="startTraining()">开始训练</button>
+        <div class="progress-bar" id="progressBar" style="display:none;"><div class="progress-fill" id="progressFill"></div></div>
+        <div id="trainStatus" class="status status-idle">空闲</div>
+        <div id="trainMessage" style="font-size:0.8rem; color:#aaa;"></div>
+    </div>
+    
+    <!-- 预测面板 -->
+    <div class="panel">
+        <h2>🔮 预测比赛</h2>
+        <p>使用训练好的模型 + API 实时伤停数据</p>
+        <form id="predictForm">
+            <input type="text" id="home" placeholder="主队" required>
+            <input type="text" id="away" placeholder="客队" required>
+            <input type="text" id="injuries" placeholder="伤停（可选）">
+            <button type="submit">预测</button>
+        </form>
+        <div id="predictResult" class="result">等待输入...</div>
+    </div>
 </div>
+
 <script>
-    document.getElementById('form').onsubmit = async (e) => {
+    let pollInterval = null;
+    
+    async function startTraining() {
+        const btn = document.getElementById('trainBtn');
+        btn.disabled = true;
+        document.getElementById('trainStatus').innerHTML = '启动中...';
+        document.getElementById('progressBar').style.display = 'block';
+        
+        await fetch('/train', { method: 'POST' });
+        
+        if (pollInterval) clearInterval(pollInterval);
+        pollInterval = setInterval(pollTrainingStatus, 1000);
+    }
+    
+    async function pollTrainingStatus() {
+        const res = await fetch('/training_status');
+        const data = await res.json();
+        
+        document.getElementById('trainStatus').innerHTML = data.status;
+        document.getElementById('trainMessage').innerHTML = data.message;
+        document.getElementById('progressFill').style.width = data.progress + '%';
+        
+        if (data.status !== 'running') {
+            clearInterval(pollInterval);
+            document.getElementById('trainBtn').disabled = false;
+            if (data.status === 'success') {
+                document.getElementById('trainStatus').className = 'status status-success';
+            } else if (data.status === 'failed') {
+                document.getElementById('trainStatus').className = 'status status-failed';
+            }
+        } else {
+            document.getElementById('trainStatus').className = 'status status-running';
+        }
+    }
+    
+    document.getElementById('predictForm').onsubmit = async (e) => {
         e.preventDefault();
         const data = {
             home: document.getElementById('home').value,
             away: document.getElementById('away').value,
             injuries: document.getElementById('injuries').value
         };
+        
+        document.getElementById('predictResult').innerHTML = '⏳ 预测中...';
+        
         const res = await fetch('/predict', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(data)
         });
         const json = await res.json();
-        document.getElementById('result').innerHTML = JSON.stringify(json, null, 2);
+        document.getElementById('predictResult').innerHTML = JSON.stringify(json, null, 2);
     };
+    
+    // 加载初始状态
+    fetch('/health').then(r => r.json()).then(data => {
+        console.log('模型状态:', data.teams + '支球队');
+    });
 </script>
 </body>
 </html>
