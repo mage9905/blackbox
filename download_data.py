@@ -1,43 +1,45 @@
-import requests
 import pandas as pd
 from pathlib import Path
+from underdata.league import League
 
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 
-def download_matches():
-    print("📥 下载真实比赛数据...")
+def fetch_matches():
+    print("📥 通过 underdata 拉取比赛数据...")
+    all_matches = []
     
-    # FiveThirtyEight 足球数据（国内一般能访问）
-    url = "https://raw.githubusercontent.com/fivethirtyeight/data/master/soccer-spi/raw_data/spi_matches.csv"
+    # 拉取英超近 3 个赛季
+    for season in [2021, 2022, 2023]:
+        try:
+            league = League(league_name="Premier League", season=season)
+            # 获取赛季所有比赛
+            matches = league.get_fixtures()
+            for m in matches:
+                all_matches.append({
+                    "home_team": m.get("home_team"),
+                    "away_team": m.get("away_team"),
+                    "home_goals": m.get("home_goals"),
+                    "away_goals": m.get("away_goals"),
+                    "season": season
+                })
+            print(f"✅ 已拉取 {season} 赛季数据")
+        except Exception as e:
+            print(f"⚠️ {season} 赛季拉取失败: {e}")
     
-    try:
-        r = requests.get(url, timeout=30)
-        if r.status_code == 200:
-            size = len(r.content)
-            print(f"下载大小: {size} 字节")
-            
-            if size < 100000:
-                print("文件太小，可能不是真实数据")
-                return False
-                
-            with open(DATA_DIR / "matches.csv", 'wb') as f:
-                f.write(r.content)
-            print("✅ 已下载真实数据")
-            return True
-    except Exception as e:
-        print(f"下载失败: {e}")
+    if not all_matches:
+        print("❌ 未拉取到任何数据")
         return False
+    
+    df = pd.DataFrame(all_matches)
+    df.to_csv(DATA_DIR / "matches.csv", index=False)
+    print(f"✅ 已保存 {len(df)} 场比赛到 data/matches.csv")
+    return True
 
 def compute_team_stats():
     print("📊 计算球队统计...")
-    
     df = pd.read_csv(DATA_DIR / "matches.csv")
-    print(f"原始数据: {len(df)} 行")
-    
-    # 映射列名
-    if 'team1' in df.columns:
-        df = df.rename(columns={'team1': 'home_team', 'team2': 'away_team', 'score1': 'home_goals', 'score2': 'away_goals'})
+    print(f"✅ 已加载 {len(df)} 场比赛")
     
     teams = set(df["home_team"]) | set(df["away_team"])
     stats = []
@@ -61,8 +63,8 @@ def compute_team_stats():
     print(f"✅ 已计算 {len(stats)} 支球队统计")
 
 if __name__ == "__main__":
-    if download_matches():
+    if fetch_matches():
         compute_team_stats()
         print("🎯 真实数据准备完成")
     else:
-        print("❌ 无法下载真实数据")
+        print("❌ 数据拉取失败")
